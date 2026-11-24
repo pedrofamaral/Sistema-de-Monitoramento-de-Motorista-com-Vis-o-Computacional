@@ -66,6 +66,7 @@ def test_no_fatigue_before_enough_data():
 def test_high_perclos_triggers_fatigue():
     status = feed(make_monitor(), blinking_pattern(60, 0.20, 30))
     assert status.ready and status.fatigued
+    assert status.by_perclos and not status.by_yawns
 
 
 def test_normal_blinking_is_not_fatigue():
@@ -86,6 +87,7 @@ def test_yawns_trigger_fatigue_and_expire():
     monitor = make_monitor(yawn_window=300, yawn_count=3)
     status = feed(monitor, [False] * (100 * 30), yawns_at=(10, 40, 70))
     assert status.yawns == 3 and status.fatigued
+    assert status.by_yawns and not status.by_perclos
     status = feed(monitor, [False] * (300 * 30), start=100)
     assert status.yawns == 0 and not status.fatigued
 

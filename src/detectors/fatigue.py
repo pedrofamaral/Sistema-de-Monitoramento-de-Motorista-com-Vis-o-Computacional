@@ -48,7 +48,12 @@ class FatigueStatus:
     observed_seconds: float = 0.0  # dados disponíveis na janela do PERCLOS
     ready: bool = False            # já há dados suficientes para avaliar o PERCLOS
     yawns: int = 0                 # bocejos na janela
-    fatigued: bool = False         # FADIGA
+    by_perclos: bool = False       # FADIGA disparada pelo PERCLOS
+    by_yawns: bool = False         # FADIGA disparada pelos bocejos
+
+    @property
+    def fatigued(self) -> bool:
+        return self.by_perclos or self.by_yawns
 
 
 class FatigueMonitor:
@@ -88,4 +93,4 @@ class FatigueMonitor:
 
         yawns = len(self._yawn_times)
         return FatigueStatus(perclos=perclos, observed_seconds=observed, ready=ready, yawns=yawns,
-                             fatigued=self._perclos_high or yawns >= self.yawn_count)
+                             by_perclos=self._perclos_high, by_yawns=yawns >= self.yawn_count)

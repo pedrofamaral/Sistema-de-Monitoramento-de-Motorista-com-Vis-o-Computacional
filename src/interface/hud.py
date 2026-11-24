@@ -141,18 +141,22 @@ class Hud:
                      f"{eye.closed_for:.1f} s / {self.closed_seconds:.1f} s", color, s,
                      bar=(bar_w, eye.closed_for / self.closed_seconds))
 
-        # Coluna 3: fadiga (PERCLOS e bocejos)
-        title = f"FADIGA - bocejos {fatigue.yawns}/{self.yawn_count}"
-        if not fatigue.ready:
-            value, color = (f"aguardando {fatigue.observed_seconds:.0f}/"
-                            f"{self.min_observed_seconds:.0f} s"), GRAY
-            fraction = fatigue.observed_seconds / self.min_observed_seconds
+        # Coluna 3: fadiga. Um critério por linha, com o limite escrito;
+        # fica laranja só o critério que disparou.
+        x = 2 * col + pad
+        cv2.putText(frame, "FADIGA", (x, top + int(24 * s)), FONT, 0.5 * s, TITLE, 1, cv2.LINE_AA)
+        if fatigue.ready:
+            perclos_text = f"PERCLOS {fatigue.perclos:.0%} (limite {self.perclos_threshold:.0%})"
+            perclos_color = ORANGE if fatigue.by_perclos else WHITE
         else:
-            value, color = f"PERCLOS {fatigue.perclos:.0%}", WHITE
-            fraction = fatigue.perclos / self.perclos_threshold
-        if fatigue.fatigued:  # inclui fadiga por bocejos, mesmo antes do PERCLOS ficar pronto
-            color = ORANGE
-        self._column(frame, 2 * col + pad, top, title, value, color, s, bar=(bar_w, fraction))
+            perclos_text = (f"PERCLOS (dados {fatigue.observed_seconds:.0f}/"
+                            f"{self.min_observed_seconds:.0f} s)")
+            perclos_color = GRAY
+        yawn_text = f"Bocejos {fatigue.yawns} (limite {self.yawn_count})"
+        yawn_color = ORANGE if fatigue.by_yawns else WHITE
+        for text, color, y in ((perclos_text, perclos_color, 52), (yawn_text, yawn_color, 80)):
+            cv2.putText(frame, text, (x, top + int(y * s)), FONT, 0.55 * s, color,
+                        max(1, round(1.5 * s)), cv2.LINE_AA)
 
         # Coluna 4: celular
         color = RED if phone.in_use else (AMBER if phone.kept else WHITE)
