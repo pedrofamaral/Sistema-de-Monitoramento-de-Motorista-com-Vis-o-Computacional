@@ -6,6 +6,7 @@ __pycache__/
 
 # Credenciais (token do bot do Telegram)
 config/secrets.yaml
+.env
 
 # Pesos dos modelos (baixados por scripts/download_models.py)
 models/*.pt
