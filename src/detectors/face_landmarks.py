@@ -18,6 +18,13 @@ from mediapipe.tasks.python import BaseOptions, vision
 RIGHT_EYE = (33, 160, 158, 133, 153, 144)
 LEFT_EYE = (362, 385, 387, 263, 373, 380)
 
+# Boca pelos lábios internos: cantos e três pares cima/baixo. Com os lábios
+# internos o MAR fica perto de zero com a boca fechada (os externos somam a
+# espessura dos lábios).
+MOUTH_CORNERS = (78, 308)
+MOUTH_PAIRS = ((82, 87), (13, 14), (312, 317))
+MOUTH_CONTOUR = (78, 82, 13, 312, 308, 317, 14, 87)  # para desenhar
+
 
 class FaceLandmarkDetector:
     def __init__(self, model_path: str | Path, min_detection_confidence: float = 0.5,

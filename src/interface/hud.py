@@ -9,15 +9,18 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from ..decision.engine import DriverState
+from ..decision.engine import CRITICAL, DriverState
 from ..detectors.eyes import EyeStatus
-from ..detectors.face_landmarks import LEFT_EYE, RIGHT_EYE
+from ..detectors.face_landmarks import LEFT_EYE, MOUTH_CONTOUR, RIGHT_EYE
+from ..detectors.fatigue import FatigueStatus
+from ..detectors.mouth import MouthStatus
 from ..detectors.phone import PhoneStatus
 
 # Cores em BGR
 GREEN = (60, 170, 60)
 RED = (40, 40, 220)
 AMBER = (0, 165, 255)
+ORANGE = (0, 110, 240)
 WHITE = (240, 240, 240)
 GRAY = (150, 150, 150)
 DARK = (22, 20, 18)
@@ -50,24 +53,28 @@ def _pill(frame, text, x, y, color, s, font_scale=0.65, alpha=0.88,
 
 
 class Hud:
-    def __init__(self, closed_seconds: float, phone_seconds: float,
+    def __init__(self, closed_seconds: float, phone_seconds: float, perclos_threshold: float,
+                 min_observed_seconds: float, yawn_count: int,
                  roi: tuple[float, float, float, float] = FULL_FRAME):
         self.closed_seconds = closed_seconds
         self.phone_seconds = phone_seconds
+        self.perclos_threshold = perclos_threshold
+        self.min_observed_seconds = min_observed_seconds
+        self.yawn_count = yawn_count
         self.roi = tuple(roi)
 
     def draw(self, frame: np.ndarray, *, states: list[DriverState], fps: float,
-             landmarks: np.ndarray | None, eye: EyeStatus, threshold: float,
-             calibrated: bool, calibration: float | None, phone: PhoneStatus,
-             show_mesh: bool = False) -> np.ndarray:
+             landmarks: np.ndarray | None, eye: EyeStatus, mouth: MouthStatus,
+             fatigue: FatigueStatus, threshold: float, calibrated: bool,
+             calibration: float | None, phone: PhoneStatus, show_mesh: bool = False) -> np.ndarray:
         """Desenha tudo no frame. `calibration` é o progresso (0-1) ou None."""
         h, w = frame.shape[:2]
         s = max(0.55, min(w / 1280.0, 1.0))  # escala relativa a 720p
-        self._draw_overlays(frame, landmarks, eye, phone, show_mesh, s)
+        self._draw_overlays(frame, landmarks, eye, mouth, phone, show_mesh, s)
         self._draw_status(frame, states, calibration, s)
         _pill(frame, f"{fps:.1f} FPS", w - int(16 * s), int(14 * s), DARK, s,
               font_scale=0.6, alpha=0.8, text_color=(200, 240, 200), align_right=True)
-        self._draw_dock(frame, eye, threshold, calibrated, phone, s)
+        self._draw_dock(frame, eye, fatigue, threshold, calibrated, phone, s)
         return frame
 
     def _draw_status(self, frame, states, calibration, s):
@@ -77,10 +84,11 @@ class Hud:
         elif states == [DriverState.NORMAL]:
             text, color = "NORMAL", GREEN
         else:
-            text, color = " | ".join(state.value for state in states), RED
+            text = " | ".join(state.value for state in states)
+            color = RED if CRITICAL.intersection(states) else ORANGE
         _pill(frame, text, int(16 * s), int(14 * s), color, s, font_scale=0.7)
 
-    def _draw_overlays(self, frame, landmarks, eye, phone, show_mesh, s):
+    def _draw_overlays(self, frame, landmarks, eye, mouth, phone, show_mesh, s):
         h, w = frame.shape[:2]
         thin, thick = max(1, round(s)), max(2, round(2 * s))
 
@@ -95,10 +103,12 @@ class Hud:
             if show_mesh:
                 for x, y in landmarks.astype(int):
                     cv2.circle(frame, (x, y), 1, GRAY, -1)
-            color = RED if eye.eyes_closed else GREEN
+            eye_color = RED if eye.eyes_closed else GREEN
             for indices in (RIGHT_EYE, LEFT_EYE):
-                cv2.polylines(frame, [landmarks[list(indices)].astype(int)], True, color, thin,
-                              cv2.LINE_AA)
+                cv2.polylines(frame, [landmarks[list(indices)].astype(int)], True, eye_color,
+                              thin, cv2.LINE_AA)
+            cv2.polylines(frame, [landmarks[list(MOUTH_CONTOUR)].astype(int)], True,
+                          ORANGE if mouth.yawning else GREEN, thin, cv2.LINE_AA)
 
         boxes = [(det, GRAY, thin, f"descartado {det.confidence:.2f}") for det in phone.rejected]
         box_color = RED if phone.in_use else AMBER
@@ -109,12 +119,12 @@ class Hud:
             cv2.putText(frame, label, (x1, max(int(20 * s), y1 - 8)), FONT, 0.6 * s, color,
                         thickness, cv2.LINE_AA)
 
-    def _draw_dock(self, frame, eye, threshold, calibrated, phone, s):
+    def _draw_dock(self, frame, eye, fatigue, threshold, calibrated, phone, s):
         h, w = frame.shape[:2]
         top = h - int(92 * s)
         _panel(frame, 0, top, w, h, DARK, 0.85)
         cv2.line(frame, (0, top), (w, top), (65, 55, 50), max(1, round(1.5 * s)))
-        col, pad = w // 3, int(20 * s)
+        col, pad = w // 4, int(18 * s)
         bar_w = col - 2 * pad
 
         # Coluna 1: abertura dos olhos
@@ -125,16 +135,29 @@ class Hud:
         subtitle = f"limiar {threshold:.2f} ({'calibrado' if calibrated else 'fixo'})"
         self._column(frame, pad, top, "OLHOS", value, color, s, subtitle=subtitle)
 
-        # Coluna 2: tempo de olhos fechados até o alerta
+        # Coluna 2: tempo de olhos fechados até a SONOLENCIA
         color = RED if eye.drowsy else (AMBER if eye.closed_for > 0 else WHITE)
         self._column(frame, col + pad, top, "OLHOS FECHADOS",
                      f"{eye.closed_for:.1f} s / {self.closed_seconds:.1f} s", color, s,
                      bar=(bar_w, eye.closed_for / self.closed_seconds))
 
-        # Coluna 3: celular
+        # Coluna 3: fadiga (PERCLOS e bocejos)
+        title = f"FADIGA - bocejos {fatigue.yawns}/{self.yawn_count}"
+        if not fatigue.ready:
+            value, color = (f"aguardando {fatigue.observed_seconds:.0f}/"
+                            f"{self.min_observed_seconds:.0f} s"), GRAY
+            fraction = fatigue.observed_seconds / self.min_observed_seconds
+        else:
+            value, color = f"PERCLOS {fatigue.perclos:.0%}", WHITE
+            fraction = fatigue.perclos / self.perclos_threshold
+        if fatigue.fatigued:  # inclui fadiga por bocejos, mesmo antes do PERCLOS ficar pronto
+            color = ORANGE
+        self._column(frame, 2 * col + pad, top, title, value, color, s, bar=(bar_w, fraction))
+
+        # Coluna 4: celular
         color = RED if phone.in_use else (AMBER if phone.kept else WHITE)
         value = f"conf {phone.confidence:.2f}" if phone.kept else "nenhum"
-        self._column(frame, 2 * col + pad, top, "CELULAR", value, color, s,
+        self._column(frame, 3 * col + pad, top, "CELULAR", value, color, s,
                      bar=(bar_w, phone.detected_for / self.phone_seconds))
 
     @staticmethod

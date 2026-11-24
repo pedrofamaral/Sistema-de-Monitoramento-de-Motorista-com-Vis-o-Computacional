@@ -34,6 +34,7 @@ def test_monitor_confirms_phone_after_persistence():
 
 
 def test_decide_allows_simultaneous_states():
-    assert decide(False, False) == [DriverState.NORMAL]
-    assert decide(True, False) == [DriverState.DROWSY]
-    assert decide(True, True) == [DriverState.DROWSY, DriverState.PHONE]
+    assert decide(drowsy=False, phone_in_use=False, fatigued=False) == [DriverState.NORMAL]
+    assert decide(drowsy=True, phone_in_use=False, fatigued=False) == [DriverState.DROWSY]
+    assert decide(drowsy=True, phone_in_use=True, fatigued=True) == [
+        DriverState.DROWSY, DriverState.PHONE, DriverState.FATIGUE]

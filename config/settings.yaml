@@ -28,6 +28,19 @@ drowsiness:
     seconds: 3.0           # tempo olhando para a câmera com os olhos abertos
     ratio: 0.65            # limiar = 65% do EAR mediano de olhos abertos
 
+fatigue:                   # cansaço acumulado: aviso antecipado, mais brando que a SONOLENCIA
+  perclos:                 # porcentagem do tempo com olhos fechados (Dinges e Grace, 1998)
+    window_seconds: 60     # janela deslizante
+    threshold: 0.15        # PERCLOS >= 15% = FADIGA
+    hysteresis: 0.03       # só sai da FADIGA com PERCLOS abaixo de limiar - histerese
+    min_observed_seconds: 30  # só avalia depois de 30 s de rosto visível na janela
+  yawn:
+    mar_threshold: 0.6     # MAR (lábios internos) acima disso = boca muito aberta
+    min_seconds: 1.0       # boca muito aberta por pelo menos 1 s = bocejo (a fala não chega a isso)
+    gap_tolerance: 0.2     # quedas rápidas do MAR durante o bocejo não zeram a contagem
+    window_seconds: 300    # janela para contar bocejos (5 min)
+    count: 3               # bocejos na janela = FADIGA
+
 phone:
   class_name: cell phone   # classe do COCO (id 67 no modelo pré-treinado)
   confidence: 0.50         # confiança mínima de cada detecção

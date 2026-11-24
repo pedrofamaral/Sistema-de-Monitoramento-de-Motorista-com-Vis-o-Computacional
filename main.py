@@ -15,6 +15,8 @@ from src.capture import VideoSource
 from src.decision.engine import decide
 from src.detectors.eyes import DrowsinessDetector, EARCalibrator, EyeStatus, average_ear
 from src.detectors.face_landmarks import FaceLandmarkDetector
+from src.detectors.fatigue import FatigueMonitor
+from src.detectors.mouth import YawnDetector, mouth_aspect_ratio
 from src.detectors.phone import PhoneFilter, PhoneMonitor
 from src.detectors.phone_yolo import PhoneDetector
 from src.detectors.temporal import PersistenceFilter
@@ -40,6 +42,7 @@ def main():
     cfg = load_config()
     cap_cfg, eye_cfg, phone_cfg = cfg["capture"], cfg["drowsiness"], cfg["phone"]
     calib_cfg = eye_cfg["calibration"]
+    perclos_cfg, yawn_cfg = cfg["fatigue"]["perclos"], cfg["fatigue"]["yawn"]
 
     face = FaceLandmarkDetector(project_path(cfg["models"]["face_landmarker"]), **cfg["face"])
     yolo = PhoneDetector(project_path(cfg["models"]["yolo"]), phone_cfg["class_name"],
@@ -53,7 +56,13 @@ def main():
                     roi=tuple(filters["roi"])),
         PersistenceFilter(phone_cfg["persistence"]["min_seconds"],
                           phone_cfg["persistence"]["gap_tolerance"]))
-    hud = Hud(eye_cfg["closed_seconds"], phone_cfg["persistence"]["min_seconds"], filters["roi"])
+    yawn = YawnDetector(yawn_cfg["mar_threshold"], yawn_cfg["min_seconds"], yawn_cfg["gap_tolerance"])
+    fatigue = FatigueMonitor(perclos_cfg["window_seconds"], perclos_cfg["threshold"],
+                             perclos_cfg["hysteresis"], perclos_cfg["min_observed_seconds"],
+                             yawn_cfg["window_seconds"], yawn_cfg["count"])
+    hud = Hud(eye_cfg["closed_seconds"], phone_cfg["persistence"]["min_seconds"],
+              perclos_cfg["threshold"], perclos_cfg["min_observed_seconds"], yawn_cfg["count"],
+              filters["roi"])
     fps = FPSCounter()
 
     def new_calibrator():
@@ -84,13 +93,21 @@ def main():
             eye = (drowsiness.update(ear, t) if calibrator is None
                    else EyeStatus(ear=ear, eyes_closed=False, closed_for=0.0, drowsy=False))
 
+            mouth = yawn.update(mouth_aspect_ratio(landmarks) if landmarks is not None else None, t)
+            # O PERCLOS só usa frames com rosto e já calibrados.
+            eyes_known = ear is not None and calibrator is None
+            fatigue_status = fatigue.update(eye.eyes_closed if eyes_known else None,
+                                            mouth.yawn_started, t)
+
             phone_status = phone.update(yolo.detect(frame.image), frame.image.shape, t)
-            states = decide(eye.drowsy, phone_status.in_use)
+            states = decide(drowsy=eye.drowsy, phone_in_use=phone_status.in_use,
+                            fatigued=fatigue_status.fatigued)
             current_fps = fps.tick()
 
             if not args.no_window:
                 hud.draw(frame.image, states=states, fps=current_fps, landmarks=landmarks,
-                         eye=eye, threshold=drowsiness.ear_threshold, calibrated=calibrated,
+                         eye=eye, mouth=mouth, fatigue=fatigue_status,
+                         threshold=drowsiness.ear_threshold, calibrated=calibrated,
                          calibration=calibrator.progress if calibrator else None,
                          phone=phone_status, show_mesh=show_mesh)
                 cv2.imshow(WINDOW, frame.image)
