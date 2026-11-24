@@ -14,6 +14,7 @@ Integrantes: Pedro Henrique Franco Moreira Amaral, Artur Carlo Costa Padua, Enzo
 - [x] **Semana 2:** detector de olhos e sonolência (EAR, calibração, histerese, temporizador); detector de celular (limiar, filtros, região, persistência); testes isolados
 - [x] **Extensão:** fadiga (PERCLOS e bocejos), como aviso antecipado separado da sonolência
 - [x] **Semana 3 (sistema):** motor de decisão com eventos (início, fim, duração), interface, alerta sonoro, `events.csv`, notificação no Telegram (extensão)
+- [x] **Custo computacional:** de 61% para 4,7% de CPU no vídeo de teste (ver abaixo)
 - [ ] **Semana 3 (dados):** gravação e rotulagem dos vídeos de teste
 - [ ] **Semana 4:** experimentos, métricas, análise de erros, documentação e apresentação
 
@@ -90,13 +91,45 @@ src/detectors/            face_landmarks + eyes (EAR, calibração, sonolência)
 src/decision/             motor de decisão (lista de estados ativos) e eventos (início/fim)
 src/interface/            HUD, alerta sonoro, events.csv e Telegram
 src/utils/                configuração e FPS
-scripts/                  download dos modelos, verificação, execução da referência
+scripts/                  download dos modelos, verificação, benchmark, Telegram, execução da referência
+docs/STATUS.md            onde o projeto está, decisões tomadas e próximos passos
 tests/                    testes unitários (pytest)
 models/                   pesos baixados (fora do git)
 ```
 
 Os timestamps vêm do relógio na webcam e da posição no vídeo em arquivos. Assim as regras temporais
 (ex.: olhos fechados por 2 s) independem do FPS, e um vídeo de teste dá o mesmo resultado em qualquer computador.
+
+## Custo computacional
+
+Medido com `scripts/benchmark.py`, que processa o vídeo no ritmo real (como uma webcam) e mede o uso de CPU
+do processo inteiro. Máquina: Intel i7-13620H (10 núcleos, 16 threads), só CPU. Vídeo 1280x720, 20 s; cada
+linha acumula as otimizações das anteriores. Medições únicas, com variação de ±10–20% entre execuções.
+
+| Configuração | CPU (núcleos) | % da CPU | FPS |
+|---|---|---|---|
+| 1. Antes: MediaPipe e YOLO em todo frame, sem limite de FPS | 9,8 | 61% | 20 |
+| 2. + threads do PyTorch dormem na espera (`OMP_WAIT_POLICY=PASSIVE`) | 2,6 | 16% | 18,5 |
+| 3. + limite de 15 FPS (`capture.max_fps`) | 2,1 | 13% | 14,8 |
+| 4. + YOLO a cada 0,2 s (`phone.interval_seconds`) — **configuração padrão** | **0,75** | **4,7%** | 14,9 |
+| Opcional: + YOLO com entrada 320 (`phone.imgsz`) | 0,46 | 2,9% | 14,9 |
+
+**Webcam ao vivo (20 s):** de 7,5 núcleos (47% da CPU) para 1,0 núcleo (6,1%), com o mesmo FPS.
+
+- O maior ganho veio de um desperdício: as threads do OpenMP usadas pelo PyTorch ficavam "girando" enquanto
+  esperavam a próxima inferência e ocupavam ~7 núcleos o tempo todo. `src/__init__.py` define
+  `OMP_WAIT_POLICY=PASSIVE` antes de o PyTorch ser carregado.
+- O MediaPipe custa pouco (~9 ms por frame, ~0,2 núcleo). O YOLO é a etapa cara (~40 ms por rodada).
+- Testados **sem ganho**: limitar o número de threads do PyTorch e capturar em 640x480.
+- A entrada 320 do YOLO corta mais ~40% do custo, mas pode perder celulares pequenos: decidir com os vídeos de teste.
+
+```bash
+python scripts/benchmark.py --source video.mp4                      # configuração atual
+python scripts/benchmark.py --source 0 --seconds 30                 # webcam ao vivo
+python scripts/benchmark.py --source video.mp4 --set phone.imgsz=320 --label "imgsz 320" --csv logs/benchmark.csv
+```
+
+`--set CHAVE=VALOR` também funciona no `main.py`, para testar parâmetros sem editar o `settings.yaml`.
 
 ## Referências técnicas
 

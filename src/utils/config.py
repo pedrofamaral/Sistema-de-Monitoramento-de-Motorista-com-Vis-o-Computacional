@@ -15,6 +15,20 @@ def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
         return yaml.safe_load(f)
 
 
+def apply_overrides(cfg: dict, overrides: list[str]) -> dict:
+    """Troca parâmetros pela linha de comando: ["phone.imgsz=320", "capture.width=640"]."""
+    for item in overrides:
+        key, _, raw = item.partition("=")
+        *parents, leaf = key.strip().split(".")
+        node = cfg
+        for part in parents:
+            node = node[part]
+        if leaf not in node:
+            raise KeyError(f"Parâmetro desconhecido: {key}")
+        node[leaf] = yaml.safe_load(raw)
+    return cfg
+
+
 def load_secrets(path: str | Path = SECRETS_FILE) -> dict:
     """Credenciais (ex.: token do Telegram); dicionário vazio se o arquivo não existe."""
     path = Path(path)

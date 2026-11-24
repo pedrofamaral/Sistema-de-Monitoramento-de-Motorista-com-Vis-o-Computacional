@@ -26,6 +26,21 @@ def test_reads_all_frames_with_video_timestamps(video_file):
     assert [f.timestamp for f in frames] == pytest.approx([i * 0.1 for i in range(20)], abs=1e-3)
 
 
+def test_max_fps_skips_frames_by_timestamp(tmp_path):
+    path = tmp_path / "30fps.avi"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 30.0, (64, 48))
+    for i in range(60):  # 2 s a 30 FPS
+        writer.write(np.full((48, 64, 3), i * 4, dtype=np.uint8))
+    writer.release()
+
+    with VideoSource(str(path), max_fps=15) as video:
+        frames = list(video)
+        skipped = video.skipped
+    assert len(frames) == 30 and skipped == 30          # 1 a cada 2 frames
+    assert [f.index for f in frames[:3]] == [0, 2, 4]   # índice continua sendo o do vídeo
+    assert frames[1].timestamp == pytest.approx(2 / 30, abs=1e-3)
+
+
 def test_mirror_flips_horizontally(tmp_path):
     path = tmp_path / "half.avi"
     writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 10.0, (64, 48))

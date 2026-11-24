@@ -27,11 +27,20 @@ class VideoSource:
     """
 
     def __init__(self, source: int | str, width: int | None = None,
-                 height: int | None = None, mirror: bool = False):
+                 height: int | None = None, mirror: bool = False, max_fps: float = 0):
+        """`max_fps` > 0 descarta frames para processar no máximo essa taxa.
+
+        Os frames descartados não são decodificados (grab sem retrieve), então
+        quase não custam CPU. Vale para webcam e para arquivo (pelo timestamp),
+        assim um vídeo de teste é processado como seria ao vivo.
+        """
         if isinstance(source, str) and source.isdigit():
             source = int(source)
         self.is_webcam = isinstance(source, int)
         self.mirror = mirror
+        self._min_interval = 1.0 / max_fps if max_fps else 0.0
+        self._last_ts: float | None = None
+        self.skipped = 0  # frames descartados pelo limite de FPS
 
         if self.is_webcam:
             # No Windows o backend DirectShow abre a webcam bem mais rápido que o padrão.
@@ -61,25 +70,45 @@ class VideoSource:
 
     def read(self) -> Frame | None:
         """Lê o próximo frame; retorna None no fim do vídeo ou em erro da câmera."""
-        ok, image = self._cap.read()
-        if not ok:
+        result = self._read_webcam() if self.is_webcam else self._read_file()
+        if result is None:
             return None
-
-        if self.is_webcam:
-            timestamp = time.perf_counter() - self._start
-        else:
-            # Posição real no vídeo (funciona com taxa de quadros variável,
-            # comum em gravações de celular); usa índice/FPS como reserva.
-            pos_ms = self._cap.get(cv2.CAP_PROP_POS_MSEC)
-            timestamp = pos_ms / 1000.0 if pos_ms > 0 or self._index == 0 \
-                else self._index / self._fps_file
-
+        image, timestamp = result
+        self._last_ts = timestamp
         if self.mirror:
             image = cv2.flip(image, 1)
-
         frame = Frame(image=image, timestamp=timestamp, index=self._index)
         self._index += 1
         return frame
+
+    def _read_webcam(self):
+        # Limite de FPS: dorme o tempo que falta. Não dá para ler e descartar em laço,
+        # porque o grab() da webcam não espera o próximo frame e o laço gastaria CPU à toa.
+        if self._min_interval and self._last_ts is not None:
+            wait = self._min_interval - (time.perf_counter() - self._start - self._last_ts)
+            if wait > 0:
+                time.sleep(wait)
+        ok, image = self._cap.read()
+        return (image, time.perf_counter() - self._start) if ok else None
+
+    def _read_file(self):
+        # Limite de FPS: descarta pelo timestamp do vídeo, sem decodificar (grab sem retrieve).
+        while self._cap.grab():
+            timestamp = self._file_timestamp()
+            # Margem de 10% para pequenas variações no intervalo entre frames.
+            if self._last_ts is not None and timestamp - self._last_ts < 0.9 * self._min_interval:
+                self._index += 1
+                self.skipped += 1
+                continue
+            ok, image = self._cap.retrieve()
+            return (image, timestamp) if ok else None
+        return None
+
+    def _file_timestamp(self) -> float:
+        # Posição real no vídeo (funciona com taxa de quadros variável, comum em
+        # gravações de celular); usa índice/FPS como reserva.
+        pos_ms = self._cap.get(cv2.CAP_PROP_POS_MSEC)
+        return pos_ms / 1000.0 if pos_ms > 0 or self._index == 0 else self._index / self._fps_file
 
     def release(self) -> None:
         self._cap.release()

@@ -19,7 +19,7 @@ from src.interface.event_log import EventLogger
 from src.interface.hud import Hud
 from src.interface.telegram import TelegramNotifier
 from src.pipeline import DriverMonitor
-from src.utils.config import load_config, load_secrets, project_path
+from src.utils.config import apply_overrides, load_config, load_secrets, project_path
 from src.utils.fps import FPSCounter
 
 WINDOW = "Monitor de Motorista"
@@ -33,6 +33,8 @@ def parse_args():
     p.add_argument("--no-alerts", action="store_true", help="desliga o som e o Telegram")
     p.add_argument("--no-window", action="store_true", help="processa sem abrir janela")
     p.add_argument("--frames", type=int, default=0, help="para depois de N frames (0 = sem limite)")
+    p.add_argument("--set", action="append", default=[], metavar="CHAVE=VALOR",
+                   help="troca um parâmetro do settings.yaml, ex.: --set drowsiness.closed_seconds=3")
     return p.parse_args()
 
 
@@ -51,7 +53,7 @@ def build_notifier(cfg: dict) -> TelegramNotifier | None:
 
 def main():
     args = parse_args()
-    cfg = load_config()
+    cfg = apply_overrides(load_config(), args.set)
     cap_cfg = cfg["capture"]
     source = args.source if args.source is not None else cap_cfg["source"]
 
@@ -68,7 +70,8 @@ def main():
         cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
 
     try:
-        with VideoSource(source, cap_cfg["width"], cap_cfg["height"], cap_cfg["mirror"]) as video:
+        with VideoSource(source, cap_cfg["width"], cap_cfg["height"], cap_cfg["mirror"],
+                         cap_cfg["max_fps"]) as video:
             for frame in video:
                 result = monitor.process(frame)
                 last_t = result.timestamp

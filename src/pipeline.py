@@ -4,7 +4,8 @@ Usado pelo main.py (tempo real) e, na semana 4, pela avaliação nos vídeos de 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -35,6 +36,7 @@ class FrameResult:
     ear_threshold: float
     calibrated: bool
     calibration: float | None   # progresso da calibração (None = não está calibrando)
+    timings: dict[str, float] = field(default_factory=dict)  # ms gastos em cada etapa
 
 
 class DriverMonitor:
@@ -48,6 +50,15 @@ class DriverMonitor:
         self.face = FaceLandmarkDetector(project_path(cfg["models"]["face_landmarker"]), **cfg["face"])
         self.yolo = PhoneDetector(project_path(cfg["models"]["yolo"]), phone_cfg["class_name"],
                                   phone_cfg["confidence"], phone_cfg["imgsz"])
+        # O YOLO é a etapa mais cara; roda a cada `interval_seconds` e, entre uma
+        # rodada e outra, a última detecção vale. O intervalo precisa ser menor que a
+        # tolerância a falhas da persistência, senão a contagem do celular zeraria
+        # entre uma rodada e outra.
+        self._yolo_interval = phone_cfg["interval_seconds"]
+        if self._yolo_interval >= persistence["gap_tolerance"]:
+            raise ValueError("phone.interval_seconds deve ser menor que phone.persistence.gap_tolerance")
+        self._last_yolo_t: float | None = None
+        self._detections = []
         self.drowsiness = DrowsinessDetector(eye_cfg["ear_threshold"], eye_cfg["hysteresis"],
                                              eye_cfg["closed_seconds"], eye_cfg["face_lost_grace"])
         self.yawn = YawnDetector(yawn_cfg["mar_threshold"], yawn_cfg["min_seconds"],
@@ -73,7 +84,17 @@ class DriverMonitor:
 
     def process(self, frame: Frame) -> FrameResult:
         t = frame.timestamp
+        clock = time.perf_counter()
         landmarks = self.face.detect(frame.image, t)
+        timings = {"rosto": (time.perf_counter() - clock) * 1000}
+
+        clock = time.perf_counter()
+        if self._last_yolo_t is None or t - self._last_yolo_t >= self._yolo_interval:
+            self._detections = self.yolo.detect(frame.image)
+            self._last_yolo_t = t
+        timings["celular"] = (time.perf_counter() - clock) * 1000
+
+        clock = time.perf_counter()
         ear = average_ear(landmarks) if landmarks is not None else None
 
         # Olhos: calibração (se ativa) e sonolência
@@ -93,8 +114,8 @@ class DriverMonitor:
         eyes_known = ear is not None and calibration is None
         fatigue = self.fatigue.update(eye.eyes_closed if eyes_known else None, mouth.yawn_started, t)
 
-        # Celular
-        phone = self.phone.update(self.yolo.detect(frame.image), frame.image.shape, t)
+        # Celular (filtros e persistência sobre a última detecção do YOLO)
+        phone = self.phone.update(self._detections, frame.image.shape, t)
 
         # Decisão e eventos
         states = decide(drowsy=eye.drowsy, phone_in_use=phone.in_use, fatigued=fatigue.fatigued)
@@ -105,11 +126,12 @@ class DriverMonitor:
                    DriverState.PHONE: f"Celular com confiança {phone.confidence:.2f}",
                    DriverState.FATIGUE: self._fatigue_reason(fatigue)}
         started, ended = self.events.update(states, t, values, details)
+        timings["regras"] = (time.perf_counter() - clock) * 1000
 
         return FrameResult(timestamp=t, landmarks=landmarks, eye=eye, mouth=mouth, fatigue=fatigue,
                            phone=phone, states=states, started=started, ended=ended,
                            ear_threshold=self.drowsiness.ear_threshold, calibrated=self.calibrated,
-                           calibration=calibration)
+                           calibration=calibration, timings=timings)
 
     def _fatigue_reason(self, fatigue: FatigueStatus) -> str:
         reasons = []
