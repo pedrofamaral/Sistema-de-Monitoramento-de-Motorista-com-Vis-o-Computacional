@@ -7,11 +7,21 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "settings.yaml"
+SECRETS_FILE = PROJECT_ROOT / "config" / "secrets.yaml"  # fora do git (.gitignore)
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> dict:
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_secrets(path: str | Path = SECRETS_FILE) -> dict:
+    """Credenciais (ex.: token do Telegram); dicionário vazio se o arquivo não existe."""
+    path = Path(path)
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 def project_path(relative: str | Path) -> Path:

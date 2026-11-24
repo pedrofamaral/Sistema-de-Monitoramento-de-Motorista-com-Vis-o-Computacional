@@ -54,3 +54,15 @@ phone:
   persistence:
     min_seconds: 1.0       # celular aceito por pelo menos esse tempo = CELULAR DETECTADO
     gap_tolerance: 0.5     # falhas de detecção mais curtas que isso não zeram a contagem
+
+events:
+  csv: logs/events.csv     # uma linha por evento; cada execução acrescenta ao final
+
+alerts:
+  sound: true              # bipe contínuo na SONOLENCIA; bipe curto no CELULAR e na FADIGA
+
+telegram:                  # avisa a "central"; configure com: python scripts/telegram_setup.py
+  enabled: true
+  states: [SONOLENCIA, CELULAR DETECTADO, FADIGA]  # estados que geram mensagem
+  cooldown_seconds: 60     # intervalo mínimo entre mensagens do mesmo estado
+  send_photo: true         # envia a foto do momento (rosto do motorista: só com consentimento)

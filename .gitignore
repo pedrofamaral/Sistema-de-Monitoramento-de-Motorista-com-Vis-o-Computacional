@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Credenciais (token do bot do Telegram)
+config/secrets.yaml
+
 # Pesos dos modelos (baixados por scripts/download_models.py)
 models/*.pt
 models/*.task

@@ -10,11 +10,8 @@ import cv2
 import numpy as np
 
 from ..decision.engine import CRITICAL, DriverState
-from ..detectors.eyes import EyeStatus
 from ..detectors.face_landmarks import LEFT_EYE, MOUTH_CONTOUR, RIGHT_EYE
-from ..detectors.fatigue import FatigueStatus
-from ..detectors.mouth import MouthStatus
-from ..detectors.phone import PhoneStatus
+from ..pipeline import FrameResult
 
 # Cores em BGR
 GREEN = (60, 170, 60)
@@ -63,18 +60,28 @@ class Hud:
         self.yawn_count = yawn_count
         self.roi = tuple(roi)
 
-    def draw(self, frame: np.ndarray, *, states: list[DriverState], fps: float,
-             landmarks: np.ndarray | None, eye: EyeStatus, mouth: MouthStatus,
-             fatigue: FatigueStatus, threshold: float, calibrated: bool,
-             calibration: float | None, phone: PhoneStatus, show_mesh: bool = False) -> np.ndarray:
-        """Desenha tudo no frame. `calibration` é o progresso (0-1) ou None."""
+    @classmethod
+    def from_config(cls, cfg: dict) -> "Hud":
+        perclos = cfg["fatigue"]["perclos"]
+        return cls(closed_seconds=cfg["drowsiness"]["closed_seconds"],
+                   phone_seconds=cfg["phone"]["persistence"]["min_seconds"],
+                   perclos_threshold=perclos["threshold"],
+                   min_observed_seconds=perclos["min_observed_seconds"],
+                   yawn_count=cfg["fatigue"]["yawn"]["count"],
+                   roi=cfg["phone"]["filters"]["roi"])
+
+    def draw(self, frame: np.ndarray, result: FrameResult, fps: float,
+             show_mesh: bool = False) -> np.ndarray:
+        """Desenha o resultado do pipeline sobre o frame."""
         h, w = frame.shape[:2]
         s = max(0.55, min(w / 1280.0, 1.0))  # escala relativa a 720p
-        self._draw_overlays(frame, landmarks, eye, mouth, phone, show_mesh, s)
-        self._draw_status(frame, states, calibration, s)
+        self._draw_overlays(frame, result.landmarks, result.eye, result.mouth, result.phone,
+                            show_mesh, s)
+        self._draw_status(frame, result.states, result.calibration, s)
         _pill(frame, f"{fps:.1f} FPS", w - int(16 * s), int(14 * s), DARK, s,
               font_scale=0.6, alpha=0.8, text_color=(200, 240, 200), align_right=True)
-        self._draw_dock(frame, eye, fatigue, threshold, calibrated, phone, s)
+        self._draw_dock(frame, result.eye, result.fatigue, result.ear_threshold, result.calibrated,
+                        result.phone, s)
         return frame
 
     def _draw_status(self, frame, states, calibration, s):
