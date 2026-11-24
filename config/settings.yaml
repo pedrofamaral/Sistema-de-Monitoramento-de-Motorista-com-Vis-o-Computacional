@@ -17,7 +17,27 @@ face:
   min_presence_confidence: 0.5
   min_tracking_confidence: 0.5
 
+drowsiness:
+  ear_threshold: 0.20      # EAR abaixo disso = olho fechado (usado quando a calibração está desligada)
+  hysteresis: 0.03         # o olho só volta a "aberto" com EAR >= limiar + histerese
+  closed_seconds: 2.0      # olhos fechados de forma contínua por mais que isso = SONOLENCIA
+  face_lost_grace: 1.0     # segundos sem rosto em que o último estado do olho é mantido
+                           # (a cabeça pode cair ao cochilar); depois disso, zera
+  calibration:
+    enabled: true          # mede o EAR de olhos abertos no início e define o limiar
+    seconds: 3.0           # tempo olhando para a câmera com os olhos abertos
+    ratio: 0.65            # limiar = 65% do EAR mediano de olhos abertos
+
 phone:
   class_name: cell phone   # classe do COCO (id 67 no modelo pré-treinado)
   confidence: 0.50         # confiança mínima de cada detecção
   imgsz: 640               # tamanho de entrada do YOLO
+  filters:
+    min_box_size: 0.06         # menor lado da caixa, em fração da altura do frame (~45 px em 720p)
+    excluded_aspect: [0.8, 1.2] # descarta caixas quase quadradas (altura/largura nessa faixa),
+                                # que costumam ser a mão; use null para desligar
+    roi: [0.0, 0.0, 1.0, 1.0]   # região de interesse (x1, y1, x2, y2 em fração do frame);
+                                # só conta celular com o centro dentro dela
+  persistence:
+    min_seconds: 1.0       # celular aceito por pelo menos esse tempo = CELULAR DETECTADO
+    gap_tolerance: 0.5     # falhas de detecção mais curtas que isso não zeram a contagem

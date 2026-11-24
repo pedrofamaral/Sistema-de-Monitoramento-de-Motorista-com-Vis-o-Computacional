@@ -11,8 +11,8 @@ Integrantes: Pedro Henrique Franco Moreira Amaral, Artur Carlo Costa Padua, Enzo
 ## Andamento
 
 - [x] **Semana 1:** estrutura do repositório, ambiente, webcam, landmarks e YOLO funcionando, código de referência executado
-- [ ] **Semana 2:** detector de olhos e sonolência (EAR + temporizador); detector de celular (limiar, região, persistência)
-- [ ] **Semana 3:** motor de decisão, interface, `events.csv`, gravação dos vídeos de teste
+- [x] **Semana 2:** detector de olhos e sonolência (EAR, calibração, histerese, temporizador); detector de celular (limiar, filtros, região, persistência); testes isolados
+- [ ] **Semana 3:** motor de decisão (versão inicial pronta), interface (HUD pronto), alerta sonoro, `events.csv`, notificação no Telegram (extensão), gravação dos vídeos de teste
 - [ ] **Semana 4:** experimentos, métricas, análise de erros, documentação e apresentação
 
 ## Instalação
@@ -29,24 +29,36 @@ python scripts/download_models.py # baixa face_landmarker.task e yolov8n.pt para
 ## Como rodar
 
 ```bash
-python scripts/check_setup.py                     # webcam: olhos, celular e FPS na tela
-python scripts/check_setup.py --source video.mp4  # mesmo teste num arquivo de vídeo
-python -m pytest                                  # testes unitários
+python main.py                      # monitor completo na webcam
+python main.py --source video.mp4   # num arquivo de vídeo
+python main.py --no-calibration     # usa o limiar fixo do EAR (para os experimentos)
+python -m pytest                    # testes unitários
 ```
 
-Na janela: `q` ou `ESC` sai, `m` mostra a malha completa de landmarks. Ao sair, o script imprime o FPS
-médio e a latência de cada modelo.
+Teclas: `q` ou `ESC` sai, `c` recalibra os olhos, `m` mostra a malha completa do rosto.
+
+Ao abrir, o sistema passa 3 s **calibrando**: olhe para a câmera com os olhos abertos. Ele mede o seu EAR
+de olhos abertos e usa 65% dele como limiar de olho fechado. Depois disso:
+
+- **SONOLENCIA**: olhos fechados (EAR abaixo do limiar) de forma contínua por 2 s. Piscadas não disparam.
+- **CELULAR DETECTADO**: celular aceito pelos filtros por pelo menos 1 s. Falhas de até 0,5 s não zeram a contagem.
+- Caixa **amarela** = celular visto, mas ainda não confirmado; **vermelha** = confirmado; **cinza** = descartado pelos filtros.
+
+`scripts/check_setup.py` é a verificação da semana 1 (sem regras temporais) e, ao sair, imprime o FPS médio e
+a latência de cada modelo.
 
 Todos os parâmetros (fonte de vídeo, resolução, limiares) ficam em [config/settings.yaml](config/settings.yaml).
 
 ## Estrutura
 
 ```
+main.py                   programa principal
 config/settings.yaml      parâmetros e limiares
 src/capture/              captura de webcam ou vídeo, com timestamp por frame
-src/detectors/            MediaPipe Face Landmarker (olhos) e YOLO (celular)
-src/decision/             motor de decisão (semana 3)
-src/interface/            HUD, alertas e events.csv (semana 3)
+src/detectors/            face_landmarks + eyes (EAR, calibração, sonolência),
+                          phone_yolo + phone (filtros, persistência), temporal (regra de duração)
+src/decision/             motor de decisão: lista de estados ativos
+src/interface/            HUD (alerta, events.csv e notificação: semana 3)
 src/utils/                configuração e FPS
 scripts/                  download dos modelos, verificação, execução da referência
 tests/                    testes unitários (pytest)

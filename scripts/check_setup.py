@@ -77,7 +77,8 @@ def main():
     face = None if args.skip_face else FaceLandmarkDetector(
         project_path(cfg["models"]["face_landmarker"]), **cfg["face"])
     phone = None if args.skip_yolo else PhoneDetector(
-        project_path(cfg["models"]["yolo"]), **cfg["phone"])
+        project_path(cfg["models"]["yolo"]), cfg["phone"]["class_name"],
+        cfg["phone"]["confidence"], cfg["phone"]["imgsz"])
 
     fps = FPSCounter()
     face_ms, yolo_ms = [], []
