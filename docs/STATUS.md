@@ -5,9 +5,9 @@ o que já foi feito, por que foi feito assim e o que vem a seguir.
 
 ## Onde estamos
 
-As semanas 1, 2 e 3 (parte de sistema) estão prontas, mais duas extensões (fadiga e Telegram) e a
-otimização de custo. **Falta:** gravar e rotular os vídeos de teste (fim da semana 3) e toda a semana 4
-(avaliação, experimentos, relatório e apresentação).
+As semanas 1, 2 e 3 (parte de sistema) estão prontas e testadas ao vivo, mais duas extensões (fadiga e
+Telegram, ambas funcionando) e a otimização de custo. **Falta:** gravar e rotular os vídeos de teste (fim da
+semana 3) e toda a semana 4 (avaliação, experimentos, relatório e apresentação).
 
 ## O que foi feito
 
@@ -17,7 +17,7 @@ otimização de custo. **Falta:** gravar e rotular os vídeos de teste (fim da s
 | Semana 2 | Sonolência (EAR, calibração por pessoa, histerese, 2 s de olhos fechados); celular (confiança, filtros de tamanho/proporção/região, persistência de 1 s); HUD no estilo da referência |
 | Extensão: fadiga | PERCLOS (60 s) e bocejos (MAR); estado FADIGA como aviso, separado da SONOLENCIA |
 | Semana 3 (sistema) | Eventos com início/fim/duração, `logs/events.csv`, alerta sonoro, `src/pipeline.py` reutilizável |
-| Extensão: Telegram | Mensagem com foto para a "central" no início de cada alerta (`scripts/telegram_setup.py` configura o bot) |
+| Extensão: Telegram | Mensagem com foto para a "central" no início de cada alerta (`scripts/telegram_setup.py` configura o bot). **Testado ao vivo em 24/11/2026:** a SONOLENCIA chegou no celular com foto (EAR 0,04 de olhos fechados, alerta em 2,0 s, 14,5 FPS) |
 | Custo computacional | Webcam ao vivo: de 7,5 núcleos (47% da CPU) para 1,0 núcleo (6,1%), mesmo FPS. Tabela no README |
 
 Testes: `python -m pytest` (47 testes, todos passando).
@@ -60,18 +60,26 @@ Testes: `python -m pytest` (47 testes, todos passando).
 - Se a cabeça cair e o rosto sumir por mais de 1 s, a contagem de sonolência zera.
 - O "olho fechado" do PERCLOS é mais brando que o critério P80 da literatura; olhar para baixo também baixa o EAR.
 - Bocejo coberto pela mão não é contado.
-- O envio real pelo Telegram ainda não foi testado (falta criar o bot).
+
+## Para quem clonar o projeto
+
+1. Ambiente: `python -m venv .venv`, `pip install -r requirements.txt`, `python scripts/download_models.py`.
+2. Telegram (opcional): o token **não está no git**. Peça o token do bot ao Pedro por mensagem privada, aperte
+   "Iniciar" na conversa com o bot e rode `python scripts/telegram_setup.py` na sua máquina. Sem isso o programa
+   funciona normalmente, só não manda mensagens.
+3. Para testar alertas várias vezes seguidas: `python main.py --set telegram.cooldown_seconds=0` (o padrão é
+   1 mensagem por tipo de alerta a cada 60 s).
 
 ## Próximos passos
 
-1. **Telegram**: criar o bot no @BotFather, rodar `python scripts/telegram_setup.py` e testar um alerta real.
-2. **Vídeos de teste** (fim da semana 3): gravar em ambiente simulado, com consentimento, os cenários da
+1. **Vídeos de teste** (fim da semana 3): gravar em ambiente simulado, com consentimento, os cenários da
    proposta (normal, piscadas, olhos fechados por alguns segundos, celular visível, celular parcialmente oculto,
    mudança de iluminação). Rotular início e fim de cada evento (dois integrantes, conferência cruzada).
-   Ainda falta criar o script de gravação e definir o formato do arquivo de rótulos.
-3. **Semana 4 — avaliação**: script que roda `DriverMonitor` em cada vídeo (`--no-alerts`), compara os eventos
+   **Próxima tarefa de código:** criar o script de gravação e definir o formato do arquivo de rótulos, já no
+   formato que a avaliação vai ler.
+2. **Semana 4 — avaliação**: script que roda `DriverMonitor` em cada vídeo (`--no-alerts`), compara os eventos
    com os rótulos e calcula precision, recall, F1, falsos alertas por minuto, latência do alerta e FPS.
-4. **Experimentos da proposta**: limiar do EAR (0,15/0,20/0,25), tempo para alerta (1/2/3 s), confiança do YOLO
+3. **Experimentos da proposta**: limiar do EAR (0,15/0,20/0,25), tempo para alerta (1/2/3 s), confiança do YOLO
    (0,30/0,50/0,70), resolução (1280x720 e 640x480); incluir também `phone.imgsz` 320 e o filtro de proporção
    ligado/desligado. Usar `--set` para variar sem editar o `settings.yaml`.
-5. Relatório, gráficos, vídeo demonstrativo e apresentação.
+4. Relatório, gráficos, vídeo demonstrativo e apresentação.
