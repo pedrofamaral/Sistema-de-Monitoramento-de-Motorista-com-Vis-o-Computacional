@@ -1,0 +1,23 @@
+# Configuração do sistema de monitoramento de motorista.
+# Todos os limiares e parâmetros ficam aqui, sem valores fixos no código.
+# Caminhos relativos são resolvidos a partir da raiz do projeto.
+
+capture:
+  source: 0          # índice da webcam (0, 1, ...) ou caminho de um arquivo de vídeo
+  width: 1280        # resolução pedida à webcam (ignorada em arquivos de vídeo)
+  height: 720
+  mirror: true       # espelha a imagem, como um espelho, para ficar natural na tela
+
+models:
+  face_landmarker: models/face_landmarker.task
+  yolo: models/yolov8n.pt
+
+face:
+  min_detection_confidence: 0.5
+  min_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+phone:
+  class_name: cell phone   # classe do COCO (id 67 no modelo pré-treinado)
+  confidence: 0.50         # confiança mínima de cada detecção
+  imgsz: 640               # tamanho de entrada do YOLO

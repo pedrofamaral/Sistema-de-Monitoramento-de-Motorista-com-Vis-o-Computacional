@@ -1,0 +1,18 @@
+# Ambiente Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Pesos dos modelos (baixados por scripts/download_models.py)
+models/*.pt
+models/*.task
+models/*.onnx
+
+# Vídeos de teste (gravações de rosto, não versionar) e saídas
+data/videos/
+logs/
+runs/
+
+# Código de referência clonado para estudo
+referencia/
