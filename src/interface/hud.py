@@ -36,6 +36,54 @@ def _panel(frame, x1, y1, x2, y2, color, alpha):
     frame[y1:y2, x1:x2] = cv2.addWeighted(np.full_like(region, color), alpha, region, 1 - alpha, 0)
 
 
+def _rounded_rect(frame, pt1, pt2, color, thickness, radius):
+    """Retangulo com cantos arredondados; thickness < 0 preenche."""
+    x1, y1 = pt1
+    x2, y2 = pt2
+    if x2 <= x1 or y2 <= y1:
+        return
+    r = max(0, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
+    corners = ((x1 + r, y1 + r, 180, 270), (x2 - r, y1 + r, 270, 360),
+               (x2 - r, y2 - r, 0, 90), (x1 + r, y2 - r, 90, 180))
+    if thickness < 0:
+        if r == 0:
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, -1)
+            return
+        cv2.rectangle(frame, (x1 + r, y1), (x2 - r, y2), color, -1)
+        cv2.rectangle(frame, (x1, y1 + r), (x2, y2 - r), color, -1)
+        for cx, cy, a1, a2 in corners:
+            cv2.ellipse(frame, (cx, cy), (r, r), 0, a1, a2, color, -1)
+    else:
+        if r == 0:
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
+            return
+        cv2.line(frame, (x1 + r, y1), (x2 - r, y1), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (x1 + r, y2), (x2 - r, y2), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (x1, y1 + r), (x1, y2 - r), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (x2, y1 + r), (x2, y2 - r), color, thickness, cv2.LINE_AA)
+        for cx, cy, a1, a2 in corners:
+            cv2.ellipse(frame, (cx, cy), (r, r), 0, a1, a2, color, thickness, cv2.LINE_AA)
+
+
+def _corner_box(frame, x1, y1, x2, y2, color, thickness, s):
+    """Caixa de deteccao estilo mira: so os 4 cantos, em L."""
+    corner = max(int(10 * s), min((x2 - x1) // 3, (y2 - y1) // 3, int(22 * s)))
+    for cx, cy, dx, dy in ((x1, y1, 1, 1), (x2, y1, -1, 1), (x1, y2, 1, -1), (x2, y2, -1, -1)):
+        cv2.line(frame, (cx, cy), (cx + dx * corner, cy), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (cx, cy), (cx, cy + dy * corner), color, thickness, cv2.LINE_AA)
+
+
+def _chip(frame, text, x, y, color, s, font_scale=0.5, text_color=WHITE):
+    """Etiqueta arredondada e opaca, usada junto das caixas de deteccao."""
+    thickness = max(1, round(1.5 * s))
+    (tw, th), _ = cv2.getTextSize(text, FONT, font_scale * s, thickness)
+    pad_x, pad_y = int(9 * s), int(6 * s)
+    x2, y2 = x + tw + 2 * pad_x, y + th + 2 * pad_y
+    _rounded_rect(frame, (x, y), (x2, y2), color, -1, (y2 - y) // 2)
+    cv2.putText(frame, text, (x + pad_x, y2 - pad_y - 1), FONT, font_scale * s, text_color,
+                thickness, cv2.LINE_AA)
+
+
 def _pill(frame, text, x, y, color, s, font_scale=0.65, alpha=0.88,
           text_color=WHITE, align_right=False):
     """Faixa com texto; com align_right, x é a borda direita."""
@@ -122,9 +170,10 @@ class Hud:
         boxes += [(det, box_color, thick, f"celular {det.confidence:.2f}") for det in phone.kept]
         for det, color, thickness, label in boxes:
             x1, y1, x2, y2 = det.box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-            cv2.putText(frame, label, (x1, max(int(20 * s), y1 - 8)), FONT, 0.6 * s, color,
-                        thickness, cv2.LINE_AA)
+            _corner_box(frame, x1, y1, x2, y2, color, thickness, s)
+            chip_y = max(0, y1 - int(30 * s))
+            text_color = WHITE if color is RED else DARK
+            _chip(frame, label, x1, chip_y, color, s, text_color=text_color)
 
     def _draw_dock(self, frame, eye, fatigue, threshold, calibrated, phone, s):
         h, w = frame.shape[:2]
@@ -182,7 +231,12 @@ class Hud:
         if bar:
             width, fraction = bar
             y1, y2 = top + int(64 * s), top + int(78 * s)
-            cv2.rectangle(frame, (x, y1), (x + width, y2), (52, 46, 42), -1)
+            radius = (y2 - y1) // 2
+            _rounded_rect(frame, (x, y1), (x + width, y2), (52, 46, 42), -1, radius)
             fill = int(width * min(1.0, max(0.0, fraction)))
             if fill > 0:
-                cv2.rectangle(frame, (x, y1), (x + fill, y2), color, -1)
+                _rounded_rect(frame, (x, y1), (x + fill, y2), color, -1, radius)
+                highlight_y2 = y1 + max(1, (y2 - y1) // 3)
+                highlight = tuple(min(255, c + 45) for c in color)
+                _rounded_rect(frame, (x, y1), (x + fill, highlight_y2), highlight, -1, radius)
+            _rounded_rect(frame, (x, y1), (x + width, y2), (95, 86, 80), max(1, round(s)), radius)
